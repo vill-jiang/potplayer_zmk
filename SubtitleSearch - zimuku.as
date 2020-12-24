@@ -2,6 +2,18 @@
 	subtitle search by zimuku
 */
 
+// string GetTitle() 																-> get title for UI
+// string GetVersion																-> get version for manage
+// string GetDesc()																	-> get detail information
+// string GetLoginTitle()															-> get title for login dialog
+// string GetLoginDesc()															-> get desc for login dialog
+// string ServerCheck(string User, string Pass) 									-> server check
+// string ServerLogin(string User, string Pass) 									-> login
+// string GetLanguages()															-> get support language
+// string SubtitleWebSearch(string MovieFileName, dictionary MovieMetaData)			-> search subtitle by web browser
+// array<dictionary> SubtitleSearch(string MovieFileName, dictionary MovieMetaData)	-> search subtitle
+// string SubtitleDownload(string id)												-> download subtitle
+
 bool isDebug = false;
 
 string HtmlSpecialCharsDecode(string str)
@@ -15,7 +27,7 @@ string HtmlSpecialCharsDecode(string str)
 	return str;
 }
 
-string ZMK_URL = "http://zmk.tw";
+string ZMK_URL = "http://zimuku.la";
 string ZMK_DOWNLOAD_URL = "http://zmk.pw";
 string HOST_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36 Edg/87.0.664.66";
 
@@ -92,7 +104,7 @@ string SubtitleWebSearch(string MovieFileName, dictionary MovieMetaData)
 			HostPrintUTF8(key + " :   " + string(MovieMetaData[key]));
 		}
 	}
-	string finalURL = ZMK_URL + "/search?q=" + title;
+	string finalURL = ZMK_URL + "/search?q=" + HostUrlEncode(title);
 	return finalURL;
 }
 
@@ -178,14 +190,6 @@ XMLElement GetSubXml(XMLElement &in root, string &in name, string &in value, str
 	// scan the next layers
 	currentXml = root;
 	while (currentXml.isValid()) {
-		// if (isDebug) {
-		// 	XMLAttribute a = currentXml.FindAttribute(name);
-		// 	if (a.isValid()) {
-		// 		HostPrintUTF8(currentXml.Name() + "  " + name + "  " + a.asString());
-		// 	} else {
-		// 		HostPrintUTF8(currentXml.Name() + "  no " + name);
-		// 	}
-		// }
 		XMLElement subXml = GetSubXml(currentXml.FirstChildElement(xmlName), name, value);
 		if (subXml.Name() == xmlName && HasNameValue(subXml, name, value)) {
 			return subXml;
@@ -212,9 +216,6 @@ array<string> GetSubs(XMLElement &in divRoot)
 				XMLAttribute link = linkXml.FindAttribute("href");
 				if (link.isValid()) {
 					subLinks.insertLast(link.asString());
-					if (isDebug) {
-						HostPrintUTF8(link.asString());
-					}
 				}
 			}
 		}
@@ -267,7 +268,10 @@ array<dictionary> AccessSubUrl(string &in subUrl)
 {
 	array<dictionary> items;
 	string Url = ZMK_URL + subUrl;
-	string subHtml = HostUrlGetString(Url);
+	if (isDebug) {
+		HostPrintUTF8(Url);
+	}
+	string subHtml = HostUrlGetString(Url, HOST_USER_AGENT);
 	Html2Xml(subHtml);
 	XMLDocument doc;
 	if (doc.Parse(subHtml)) {
@@ -300,12 +304,9 @@ array<dictionary> SubtitleSearch(string MovieFileName, dictionary MovieMetaData)
 	}
 
 	array<dictionary> ret;
-    array<string> MovieFileNameSplit=MovieFileName.split(".");
-    if(MovieFileNameSplit[MovieFileNameSplit.length()-1]=="mpls"||MovieFileNameSplit[MovieFileNameSplit.length()-1]=="m2ts"){
-        return ret;
-    }
+
 	string finalURL = SubtitleWebSearch(MovieFileName, MovieMetaData);
-	string zmkHtml = HostUrlGetString(finalURL);
+	string zmkHtml = HostUrlGetString(finalURL, HOST_USER_AGENT);
 	Html2Xml(zmkHtml);
 
 	if (isDebug) {
@@ -325,9 +326,6 @@ array<dictionary> SubtitleSearch(string MovieFileName, dictionary MovieMetaData)
 			HostPrintUTF8("parse main html error!");
 		}
 	}
-	if (isDebug) {
-		HostPrintUTF8("return.");
-	}
 
 	return ret;
 }
@@ -340,11 +338,6 @@ dictionary AccessDetailUrl(string &in detailUrl) {
 	XMLDocument doc;
 	if (doc.Parse(detailHtml)) {
 		XMLElement divRoot = doc.FirstChildElement("html").FirstChildElement("body").FirstChildElement("div");
-		// <div class="lside prel">
-		//   <ul class="subinfo clearfix">
-		//     <li class="li dlsub">
-		//       <div class="clearfix">
-		//         <a id="down1" href="http://zmk.pw/dld/145727.html" target="_blank" rel="nofollow"><span class="dl"><i class="glyphicon glyphicon-save"></i> 下载字幕 |<small style="padding-left:3px">26.14KB</small></span></a>
 		XMLElement aXml = GetSubXml(divRoot, "class", "lside prel");
 		aXml = GetSubXml(aXml, "class", "subinfo clearfix", "ul");
 		aXml = GetSubXml(aXml.FirstChildElement("li"), "class", "li dlsub", "li");
@@ -359,31 +352,16 @@ dictionary AccessDetailUrl(string &in detailUrl) {
 		if (downloadUrl.length() > 0) {
 			detail["download_page_url"] = downloadUrl;
 			string downloadHtml = HostUrlGetString(downloadUrl, HOST_USER_AGENT, "Connection: keep-alive");
-			// uintptr downloadPtr = HostOpenHTTP(downloadUrl, HOST_USER_AGENT, "Connection: keep-alive");
-			// string downloadHtml = HostGetContentHTTP(downloadPtr);
-			// string downloadHeader = HostGetHeaderHTTP(downloadPtr);
-			// if (isDebug) {
-			// 	HostPrintUTF8(downloadHeader);
-			// }
 			Html2Xml(downloadHtml);
 			XMLDocument downloadDoc;
 			if (downloadDoc.Parse(downloadHtml)) {
 				XMLElement downloadDivRoot = downloadDoc.FirstChildElement("html").FirstChildElement("body").FirstChildElement("main").FirstChildElement("div");
-				// <div class="col-xs-12 col-sm-12">
-				//   <table style="border:1px solid #dcdcdc; margin:10% auto 0;">
-				//     <tr>
-				//       <td width="400px" align="left">
-				//         <div class="down clearfix">
-				//           <ul>
-				//             <li>
-				//               <a rel="nofollow" href="/download/MTQ0NTMyfDBlM2UyNzNkM2Y1NGM3YzZiMzNiYmRlZHwxNjA4NzgxOTY0fDI1MmMzYmI5fHJlbW90ZQ%3D%3D/svr/dx1" class="btn btn-danger btn-sm"><span class="glyphicon glyphicon-save icon_size"></span> 电信高速下载（一 ）</a>
 				XMLElement liRoot = GetSubXml(downloadDivRoot, "class", "col-xs-12 col-sm-12");
 				liRoot = liRoot.FirstChildElement("table").FirstChildElement("tr").FirstChildElement("td").FirstChildElement("div").FirstChildElement("ul").FirstChildElement("li");
 				while (liRoot.isValid() && liRoot.Name() == "li") {
 					XMLElement a = liRoot.FirstChildElement("a");
 					detail["download_url"] = ZMK_DOWNLOAD_URL + a.asString("href");
 					break;
-					liRoot = liRoot.NextSiblingElement();
 				}
 			} else {
 				if (isDebug) {
