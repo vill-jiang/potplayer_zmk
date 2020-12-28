@@ -233,7 +233,7 @@ dictionary GetDetailInfo(XMLElement &in trXml) {
 	string detailLink;
 	string title;
 	string format;
-	XMLElement td = GetSubXml(trXml.FirstChildElement("td"), "class", "first");
+	XMLElement td = GetSubXml(trXml.FirstChildElement("td"), "class", "first", "td");
 	XMLElement aXml = td.FirstChildElement("a");
 	XMLAttribute link = aXml.FindAttribute("href");
 	if (link.isValid()) {
@@ -307,6 +307,7 @@ array<dictionary> SubtitleSearch(string MovieFileName, dictionary MovieMetaData)
 
 	string finalURL = SubtitleWebSearch(MovieFileName, MovieMetaData);
 	string zmkHtml = HostUrlGetString(finalURL, HOST_USER_AGENT);
+	HostIncTimeOut(10000);
 	Html2Xml(zmkHtml);
 
 	if (isDebug) {
@@ -318,7 +319,7 @@ array<dictionary> SubtitleSearch(string MovieFileName, dictionary MovieMetaData)
 		XMLElement divRoot = doc.FirstChildElement("html").FirstChildElement("body").FirstChildElement("div");
 		array<string> subLinks = GetSubs(divRoot);
 		for (uint i = 0; i < subLinks.length(); i++) {
-			HostIncTimeOut(1000);
+			HostIncTimeOut(10000);
 			ret.insertAt(ret.length(), AccessSubUrl(subLinks[i]));
 		}
 	} else {
