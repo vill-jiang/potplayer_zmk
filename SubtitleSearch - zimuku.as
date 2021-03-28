@@ -27,7 +27,7 @@ string HtmlSpecialCharsDecode(string str)
 	return str;
 }
 
-string ZMK_URL = "http://zimuku.la";
+string ZMK_URL = "http://zmk.pw";
 string ZMK_DOWNLOAD_URL = "http://zmk.pw";
 string HOST_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36 Edg/87.0.664.66";
 
