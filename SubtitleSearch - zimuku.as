@@ -27,9 +27,10 @@ string HtmlSpecialCharsDecode(string str)
 	return str;
 }
 
-string ZMK_URL = "http://zmk.pw";
-string ZMK_DOWNLOAD_URL = "http://zmk.pw";
-string HOST_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36 Edg/87.0.664.66";
+string ZMK_URL = "https://zmk.pw";
+string ZMK_DOWNLOAD_URL = "https://zmk.pw";
+string HOST_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Edg/94.0.992.38";
+string PHP_SESS_ID = "";
 
 array<array<string>> LangTable =
 {
@@ -47,7 +48,7 @@ string GetVersion()
 }
 string GetDesc()
 {
-	return "https://github.com/";
+	return ZMK_URL;
 }
 string GetLoginTitle()
 {
@@ -94,7 +95,6 @@ string SubtitleWebSearch(string MovieFileName, dictionary MovieMetaData)
 	// episodeNumber :   0
 	// videoEncoder :   H264
 	// resolution :   1080p
-	// releaseGroup :   TJUPT
 	string title = HtmlSpecialCharsDecode(string(MovieMetaData["title"]));
 	if (isDebug) {
 		HostOpenConsole();
@@ -147,9 +147,13 @@ void HtmlRemoveEndToStart(string &htmlString, string start, string end)
 
 void Html2Xml(string &htmlString) 
 {
-	// remove html doctype
+	htmlString.replace("<img src=\"/zfb.png\" width=\"250px\" style=\"margin:5px 0\"></div>", "");
 	// remove <!--*-->
 	HtmlRemoveStartToEnd(htmlString, "<!--", "-->");
+	// remove html doctype
+	// HtmlRemoveStartToEnd(htmlString, "<!", ">");
+	// remove head
+	HtmlRemoveStartToEnd(htmlString, "<head>", "</head>");
 	// remove <meta*>
 	HtmlRemoveStartToEnd(htmlString, "<meta", ">");
 	HtmlRemoveStartToEnd(htmlString, "<img", ">");
@@ -159,11 +163,9 @@ void Html2Xml(string &htmlString)
 	HtmlRemoveStartToEnd(htmlString, "<script", "</script>");
 	// remove footer
 	HtmlRemoveStartToEnd(htmlString, "<footer", "</footer>");
-	// remove head
-	HtmlRemoveStartToEnd(htmlString, "<head>", "</head>");
 	// remove <*/>
 	HtmlRemoveEndToStart(htmlString, "<", "/>");
-	htmlString.replace("\n\n", " ");
+	htmlString.replace("\n", " ");
 }
 
 bool HasNameValue(XMLElement &in root, string &in name, string &in value)
@@ -331,6 +333,54 @@ array<dictionary> SubtitleSearch(string MovieFileName, dictionary MovieMetaData)
 	return ret;
 }
 
+void SetCookies(string &in header) {
+	if (isDebug) {
+		HostPrintUTF8("header: \n" + header);
+	}
+	int cookieStart = header.findFirst("PHPSESSID");
+	if (cookieStart > 0) {
+		int sessidStart = cookieStart + "PHPSESSID=".length();
+		int cookieEnd = header.findFirst(";", sessidStart);
+		PHP_SESS_ID = header.substr(sessidStart, cookieEnd - sessidStart);
+		if (isDebug) {
+			HostPrintUTF8("Get PHPSESSID = " + PHP_SESS_ID);
+		}
+	}
+}
+
+string GetCookies() {
+	if (PHP_SESS_ID.length() > 0) {
+		return "set-cookie: PHPSESSID=" + PHP_SESS_ID + "\n";
+	} else {
+		return "";
+	}
+}
+
+string GetLocation(string &in header) {
+	if (isDebug) {
+		HostPrintUTF8("header: \n" + header);
+	}
+	int locationStart = header.findFirst("location: ");
+	if (locationStart > 0) {
+		int urlStart = locationStart + "location: ".length();
+		int urlEnd = header.findFirst("\n", urlStart);
+		string url = header.substr(urlStart, urlEnd - urlStart);
+		if (isDebug) {
+			HostPrintUTF8("Get location = " + url);
+		}
+		if (url.length() > 0) {
+			return url;
+		}
+	}
+	return "";
+}
+
+string GetDownloadHeader() {
+	// -H "cookie: PHPSESSID=lphu2s9693q2hsktmm2478odp7" -H "referer: https://zmk.pw/"
+	// "Referer: " + string(detail["download_page_url"])
+	return GetCookies() + "referer: " + ZMK_DOWNLOAD_URL;
+}
+
 dictionary AccessDetailUrl(string &in detailUrl) {
 	dictionary detail;
 	string downloadUrl;
@@ -347,12 +397,15 @@ dictionary AccessDetailUrl(string &in detailUrl) {
 		if (aXml.isValid() && aXml.Name() == "a" && HasNameValue(aXml, "id", "down1")) {
 			XMLAttribute link = aXml.FindAttribute("href");
 			if (link.isValid()) {
-				downloadUrl = link.asString();
+				downloadUrl = link.asString();  // like /dld/160349.html
 			}
 		}
 		if (downloadUrl.length() > 0) {
+			if (downloadUrl.findFirstOf("http") != 0) {
+				downloadUrl = ZMK_URL + downloadUrl;
+			}
 			detail["download_page_url"] = downloadUrl;
-			string downloadHtml = HostUrlGetString(downloadUrl, HOST_USER_AGENT, "Connection: keep-alive");
+			string downloadHtml = HostUrlGetString(downloadUrl, HOST_USER_AGENT);
 			Html2Xml(downloadHtml);
 			XMLDocument downloadDoc;
 			if (downloadDoc.Parse(downloadHtml)) {
@@ -361,12 +414,13 @@ dictionary AccessDetailUrl(string &in detailUrl) {
 				liRoot = liRoot.FirstChildElement("table").FirstChildElement("tr").FirstChildElement("td").FirstChildElement("div").FirstChildElement("ul").FirstChildElement("li");
 				while (liRoot.isValid() && liRoot.Name() == "li") {
 					XMLElement a = liRoot.FirstChildElement("a");
+					// like /download/MTYwMzQ5fDM5YzAwM2Q4YzAyNjdlOGZjOTAxZjA0MHwxNjMzOTQyMzY1fDg3OThkZTNifGJhY2t1cA%3D%3D/svr/bk1
 					detail["download_url"] = ZMK_DOWNLOAD_URL + a.asString("href");
 					break;
 				}
 			} else {
 				if (isDebug) {
-					HostPrintUTF8("parse download html error!");
+					HostPrintUTF8("parse download html error! url is " + downloadUrl + "\nhtml text is: \n" + downloadHtml);
 				}
 			}
 			// HostCloseHTTP(downloadPtr);
@@ -383,6 +437,17 @@ string SubtitleDownload(string id)
 {
 	dictionary detail = AccessDetailUrl(id);
 	string downloadUrl = string(detail["download_url"]);
-	string l = HostUrlGetString(downloadUrl, HOST_USER_AGENT, "Referer: " + string(detail["download_page_url"]));
+
+	uintptr downloadPtr = HostOpenHTTP(downloadUrl, HOST_USER_AGENT, "referer: " + string(detail["download_page_url"]), "", true);
+	string downloadHeader = HostGetHeaderHTTP(downloadPtr);
+	SetCookies(downloadHeader);
+
+	string trueFileUrl = GetLocation(downloadHeader);
+	string l = "";
+	if (trueFileUrl.length() > 0) {
+		l = HostUrlGetString(trueFileUrl, HOST_USER_AGENT, GetDownloadHeader());
+	} else if (isDebug) {
+		HostPrintUTF8("get file Location error.");
+	}
 	return l;
 }
